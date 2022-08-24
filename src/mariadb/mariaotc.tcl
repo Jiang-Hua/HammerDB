@@ -15,7 +15,7 @@ proc tcount_maria {bm interval masterthread} {
     		}
 	}
 
-    proc ConnectToMaria { host port socket ssl_options user password } {
+    proc ConnectToMaria { MASTER host port socket ssl_options user password } {
     global mariastatus
     #ssl_options is variable length so build a connectstring
     if { [ chk_socket $host $socket ] eq "TRUE" } {
@@ -28,15 +28,13 @@ proc tcount_maria {bm interval masterthread} {
         foreach key [ dict keys $ssl_options ] {
         append connectstring " $key [ dict get $ssl_options $key ] "
         }
-        append connectstring " -user $user -password $password"
+        append connectstring " -user $user"
+        if { [ string tolower $password ] != "null" } {
+        append connectstring " -password $password"
+        }
         set login_command "mariaconnect [ dict get $connectstring ]"
         #eval the login command
-        if [catch {set maria_handler [eval $login_command]}] {
-                if $use_socket {
-            puts "the local socket connection to $socket could not be established"
-    } else {
-            puts "the tcp connection to $host:$port could not be established"
-    }
+        if [catch {set maria_handler [eval $login_command]} message ] {
         set connected "false"
         } else {
         set connected "true"
@@ -44,7 +42,7 @@ proc tcount_maria {bm interval masterthread} {
     if {$connected} {
         return $maria_handler
     } else {
-                    tsv::set application tc_errmsg $maria_handler
+                    tsv::set application tc_errmsg $message
                     eval [subst {thread::send $MASTER show_tc_errmsg}]
                     thread::release
                     return
@@ -90,7 +88,7 @@ proc tcount_maria {bm interval masterthread} {
             } else {
                 namespace import tcountcommon::*
             }
-	    set maria_handler [ ConnectToMaria $maria_host $maria_port $maria_socket $maria_ssl_options $tmp_maria_user $tmp_maria_pass ]
+	    set maria_handler [ ConnectToMaria $MASTER $maria_host $maria_port $maria_socket $maria_ssl_options $tmp_maria_user $tmp_maria_pass ]
             #Enter loop until stop button pressed
             while { $timeout eq 0 } {
                 set timeout [ tsv::get application timeout ]
