@@ -1264,7 +1264,7 @@ proc getjob { query } {
     if {[dict exists $genericdict commandline jobsoutput]} {
         set outputformat [ dict get $genericdict commandline jobsoutput ]
     } else {
-        set outputformat "JSON"
+        set outputformat "text"
     }
     
     #set query [ wapp-param QUERY_STRING ]
