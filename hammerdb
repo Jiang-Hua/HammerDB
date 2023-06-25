@@ -27,7 +27,7 @@ exit
 # License along with this program; If not, see <https://www.gnu.org/licenses/>
 ########################################################################
 global hdb_version
-set hdb_version "v4.7"
+set hdb_version "v4.8"
 set mainGeometry +10+10
 set UserDefaultDir [ file dirname [ info script ] ]
 ::tcl::tm::path add "$UserDefaultDir/modules"
@@ -189,7 +189,7 @@ if [info exist env(Load_List)] {
     }
 }
 
-append modulelist { Thread msgcat tablelist_tile tooltip tkcon xml xscale ctext comm emu_graph socktest tkblt huddle jobs tkpath }
+append modulelist { Thread msgcat tablelist_tile tooltip tkcon xml xscale ctext comm emu_graph socktest tkblt http huddle jobs tkpath }
 
 set loadtext "Loading hammerdb modules"
 after 100
