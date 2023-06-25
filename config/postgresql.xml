@@ -51,6 +51,7 @@
             <pg_tpch_tspace>pg_default</pg_tpch_tspace>
 	    <pg_tpch_gpcompat>false</pg_tpch_gpcompat>
 	    <pg_tpch_gpcompress>false</pg_tpch_gpcompress>
+            <pg_tpch_partition>false</pg_tpch_partition>
             <pg_num_tpch_threads>1</pg_num_tpch_threads>
         </schema>
         <driver>

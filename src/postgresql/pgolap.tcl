@@ -111,7 +111,7 @@ proc CreateUserDatabase { lda host port sslmode db tspace superuser superuser_pa
     return
 }
 
-proc CreateTables { lda greenplum gpcompress } {
+proc CreateTables { lda greenplum gpcompress partition } {
     puts "CREATING TPCH TABLES"
     if { $greenplum } {
         if { $gpcompress } {
@@ -128,14 +128,21 @@ proc CreateTables { lda greenplum gpcompress } {
         set sql(7) "CREATE TABLE REGION(R_REGIONKEY NUMERIC, R_NAME CHAR(25), R_COMMENT VARCHAR(152)) $compression DISTRIBUTED BY (R_REGIONKEY)"
         set sql(8) "CREATE TABLE LINEITEM(L_SHIPDATE TIMESTAMP, L_ORDERKEY NUMERIC NOT NULL, L_DISCOUNT NUMERIC NOT NULL, L_EXTENDEDPRICE NUMERIC NOT NULL, L_SUPPKEY NUMERIC NOT NULL, L_QUANTITY NUMERIC NOT NULL, L_RETURNFLAG CHAR(1), L_PARTKEY NUMERIC NOT NULL, L_LINESTATUS CHAR(1), L_TAX NUMERIC NOT NULL, L_COMMITDATE TIMESTAMP, L_RECEIPTDATE TIMESTAMP, L_SHIPMODE CHAR(10), L_LINENUMBER NUMERIC NOT NULL, L_SHIPINSTRUCT CHAR(25), L_COMMENT VARCHAR(44)) $compression DISTRIBUTED BY (L_LINENUMBER, L_ORDERKEY)"
     } else {
-        set sql(1) "CREATE TABLE ORDERS (O_ORDERDATE TIMESTAMP, O_ORDERKEY NUMERIC NOT NULL, O_CUSTKEY NUMERIC NOT NULL, O_ORDERPRIORITY CHAR(15), O_SHIPPRIORITY NUMERIC, O_CLERK CHAR(15), O_ORDERSTATUS CHAR(1), O_TOTALPRICE NUMERIC, O_COMMENT VARCHAR(79))"
+        if { $partition } {
+            set orders_partition   "PARTITION BY RANGE (O_ORDERDATE)"
+            set lineitem_partition "PARTITION BY RANGE (L_SHIPDATE)"
+        } else {
+            set orders_partition   ""
+            set lineitem_partition ""
+        }
+        set sql(1) "CREATE TABLE ORDERS (O_ORDERDATE TIMESTAMP, O_ORDERKEY NUMERIC NOT NULL, O_CUSTKEY NUMERIC NOT NULL, O_ORDERPRIORITY CHAR(15), O_SHIPPRIORITY NUMERIC, O_CLERK CHAR(15), O_ORDERSTATUS CHAR(1), O_TOTALPRICE NUMERIC, O_COMMENT VARCHAR(79)) $orders_partition"
         set sql(2) "CREATE TABLE PARTSUPP (PS_PARTKEY NUMERIC NOT NULL, PS_SUPPKEY NUMERIC NOT NULL, PS_SUPPLYCOST NUMERIC NOT NULL, PS_AVAILQTY NUMERIC, PS_COMMENT VARCHAR(199))"
         set sql(3) "CREATE TABLE CUSTOMER(C_CUSTKEY NUMERIC NOT NULL, C_MKTSEGMENT CHAR(10), C_NATIONKEY NUMERIC, C_NAME VARCHAR(25), C_ADDRESS VARCHAR(40), C_PHONE CHAR(15), C_ACCTBAL NUMERIC, C_COMMENT VARCHAR(118))"
         set sql(4) "CREATE TABLE PART(P_PARTKEY NUMERIC NOT NULL, P_TYPE VARCHAR(25), P_SIZE NUMERIC, P_BRAND CHAR(10), P_NAME VARCHAR(55), P_CONTAINER CHAR(10), P_MFGR CHAR(25), P_RETAILPRICE NUMERIC, P_COMMENT VARCHAR(23))"
         set sql(5) "CREATE TABLE SUPPLIER(S_SUPPKEY NUMERIC NOT NULL, S_NATIONKEY NUMERIC, S_COMMENT VARCHAR(102), S_NAME CHAR(25), S_ADDRESS VARCHAR(40), S_PHONE CHAR(15), S_ACCTBAL NUMERIC)"
         set sql(6) "CREATE TABLE NATION(N_NATIONKEY NUMERIC NOT NULL, N_NAME CHAR(25), N_REGIONKEY NUMERIC, N_COMMENT VARCHAR(152))" 
         set sql(7) "CREATE TABLE REGION(R_REGIONKEY NUMERIC, R_NAME CHAR(25), R_COMMENT VARCHAR(152))"
-        set sql(8) "CREATE TABLE LINEITEM(L_SHIPDATE TIMESTAMP, L_ORDERKEY NUMERIC NOT NULL, L_DISCOUNT NUMERIC NOT NULL, L_EXTENDEDPRICE NUMERIC NOT NULL, L_SUPPKEY NUMERIC NOT NULL, L_QUANTITY NUMERIC NOT NULL, L_RETURNFLAG CHAR(1), L_PARTKEY NUMERIC NOT NULL, L_LINESTATUS CHAR(1), L_TAX NUMERIC NOT NULL, L_COMMITDATE TIMESTAMP, L_RECEIPTDATE TIMESTAMP, L_SHIPMODE CHAR(10), L_LINENUMBER NUMERIC NOT NULL, L_SHIPINSTRUCT CHAR(25), L_COMMENT VARCHAR(44))"
+        set sql(8) "CREATE TABLE LINEITEM(L_SHIPDATE TIMESTAMP, L_ORDERKEY NUMERIC NOT NULL, L_DISCOUNT NUMERIC NOT NULL, L_EXTENDEDPRICE NUMERIC NOT NULL, L_SUPPKEY NUMERIC NOT NULL, L_QUANTITY NUMERIC NOT NULL, L_RETURNFLAG CHAR(1), L_PARTKEY NUMERIC NOT NULL, L_LINESTATUS CHAR(1), L_TAX NUMERIC NOT NULL, L_COMMITDATE TIMESTAMP, L_RECEIPTDATE TIMESTAMP, L_SHIPMODE CHAR(10), L_LINENUMBER NUMERIC NOT NULL, L_SHIPINSTRUCT CHAR(25), L_COMMENT VARCHAR(44)) $lineitem_partition"
     }
     for { set i 1 } { $i <= 8 } { incr i } {
         set result [ pg_exec $lda $sql($i) ]
@@ -143,6 +150,52 @@ proc CreateTables { lda greenplum gpcompress } {
             error "[pg_result $result -error]"
         } else {
             pg_result $result -clear
+        }
+    }
+
+    #partition table by month
+    if { $partition } {
+        set cnt 1
+        # TPC BENCHMARKTM H (Decision Support) Standard Specification
+        # https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf
+        # 4.2.2.12 All dates must be computed using the following values:
+        # STARTDATE = 1992-01-01 ENDDATE = 1998-12-31
+        foreach yearitem {1992 1993 1994 1995 1996 1997 1998} {
+            foreach monthitem {JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC} {
+                # Max order date: 1998-AUG-01, O_ORDERDATE uniformly distributed between STARTDATE and (ENDDATE - 151 days).
+                #if { $yearitem == 1998 && $monthitem eq "SEP" } {
+                #    break
+                #}
+                set partition_date "$yearitem-$monthitem-01"
+                #Each range's bounds are understood as being inclusive at the lower end and exclusive at the upper end.
+                set orders_partition_sql  "CREATE TABLE ORDERS_p$cnt PARTITION OF ORDERS FOR VALUES FROM (to_timestamp('$partition_date','YYYY-Mon-DD')) TO (to_timestamp('$partition_date','YYYY-Mon-DD') + INTERVAL '1 month')"
+                set result [ pg_exec $lda $orders_partition_sql ]
+                if {[pg_result $result -status] != "PGRES_COMMAND_OK"} {
+                    error "[pg_result $result -error]" 
+                } else {
+                    pg_result $result -clear
+                }
+                incr cnt
+            }
+        }
+
+        set cnt 1
+        foreach yearitem {1992 1993 1994 1995 1996 1997 1998} {
+            foreach monthitem {JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC} {
+                # 1998-12-01 is the latest possible ship date. (This is ENDDATE - 30).
+                #if { $yearitem == 1998 && $monthitem eq "DEC" } {
+                #    break
+                #}
+                set partition_date "$yearitem-$monthitem-01"
+                set lineitem_partition_sql  "CREATE TABLE LINEITEM_p$cnt PARTITION OF LINEITEM FOR VALUES FROM (to_timestamp('$partition_date','YYYY-Mon-DD')) TO (to_timestamp('$partition_date','YYYY-Mon-DD') + INTERVAL '1 month')"
+                set result [ pg_exec $lda $lineitem_partition_sql ]
+                if {[pg_result $result -status] != "PGRES_COMMAND_OK"} {
+                    error "[pg_result $result -error]"
+                } else {
+                    pg_result $result -clear
+                }
+                incr cnt
+            }
         }
     }
 }
@@ -503,7 +556,7 @@ proc mk_order { lda start_rows end_rows upd_num scale_factor greenplum } {
     return
 }
 
-proc CreateIndexes { lda greenplum gpcompress } {
+proc CreateIndexes { lda greenplum gpcompress partition } {
     puts "CREATING TPCH INDEXES"
     if { $greenplum && $gpcompress } {
         set ind_cnt 8
@@ -522,8 +575,13 @@ proc CreateIndexes { lda greenplum gpcompress } {
         set sql(3) "ALTER TABLE SUPPLIER ADD CONSTRAINT SUPPLIER_PK PRIMARY KEY (S_SUPPKEY)"
         set sql(4) "ALTER TABLE PARTSUPP ADD CONSTRAINT PARTSUPP_PK PRIMARY KEY (PS_PARTKEY,PS_SUPPKEY)"
         set sql(5) "ALTER TABLE PART ADD CONSTRAINT PART_PK PRIMARY KEY (P_PARTKEY)"
-        set sql(6) "ALTER TABLE ORDERS ADD CONSTRAINT ORDERS_PK PRIMARY KEY (O_ORDERKEY)"
-        set sql(7) "ALTER TABLE LINEITEM ADD CONSTRAINT LINEITEM_PK PRIMARY KEY (L_LINENUMBER, L_ORDERKEY)"
+        if { $partition } {
+            set sql(6) "ALTER TABLE ORDERS ADD CONSTRAINT ORDERS_PK PRIMARY KEY (O_ORDERDATE, O_ORDERKEY)"
+            set sql(7) "ALTER TABLE LINEITEM ADD CONSTRAINT LINEITEM_PK PRIMARY KEY (L_SHIPDATE, L_LINENUMBER, L_ORDERKEY)"
+        } else {
+            set sql(6) "ALTER TABLE ORDERS ADD CONSTRAINT ORDERS_PK PRIMARY KEY (O_ORDERKEY)"
+            set sql(7) "ALTER TABLE LINEITEM ADD CONSTRAINT LINEITEM_PK PRIMARY KEY (L_LINENUMBER, L_ORDERKEY)"
+        }
         set sql(8) "ALTER TABLE CUSTOMER ADD CONSTRAINT CUSTOMER_PK PRIMARY KEY (C_CUSTKEY)"
         set sql(9) "ALTER TABLE LINEITEM ADD CONSTRAINT LINEITEM_PARTSUPP_FK FOREIGN KEY (L_PARTKEY, L_SUPPKEY) REFERENCES PARTSUPP(PS_PARTKEY, PS_SUPPKEY) NOT DEFERRABLE"
         set sql(10) "ALTER TABLE ORDERS ADD CONSTRAINT ORDER_CUSTOMER_FK FOREIGN KEY (O_CUSTKEY) REFERENCES CUSTOMER (C_CUSTKEY) NOT DEFERRABLE"
@@ -543,6 +601,10 @@ proc CreateIndexes { lda greenplum gpcompress } {
         set sql(24) "CREATE INDEX IDX_LINEITEM_ORDERKEY_FKIDX ON LINEITEM (L_ORDERKEY)"
     }
     for { set i 1 } { $i <= $ind_cnt } { incr i } {
+        #If partition is set, skip to add LINEITEM_ORDER_FK FOREIGN KEY
+        if { $partition && $i == 16 } {
+            continue
+        }
         set result [ pg_exec $lda $sql($i) ]
         if {[pg_result $result -status] != "PGRES_COMMAND_OK"} {
             error "[pg_result $result -error]"
@@ -553,7 +615,7 @@ proc CreateIndexes { lda greenplum gpcompress } {
     return
 }
 
-proc do_tpch { host port sslmode scale_fact superuser superuser_password defaultdb db tspace user password greenplum gpcompress num_vu } {
+proc do_tpch { host port sslmode scale_fact superuser superuser_password defaultdb db tspace user password greenplum gpcompress num_vu partition } {
     global dist_names dist_weights weights dists weights
     ###############################################
     #Generating following rows
@@ -618,7 +680,7 @@ proc do_tpch { host port sslmode scale_fact superuser superuser_password default
             if { $lda eq "Failed" } {
                 error "error, the database connection to $host could not be established"
             } else {
-                CreateTables $lda $greenplum $gpcompress
+                CreateTables $lda $greenplum $gpcompress $partition
                 set result [ pg_exec $lda "commit" ]
                 pg_result $result -clear
             }
@@ -708,7 +770,7 @@ proc do_tpch { host port sslmode scale_fact superuser superuser_password default
         }
     }
     if { $threaded eq "SINGLE-THREADED" || $threaded eq "MULTI-THREADED" && $myposition eq 1 } {
-        CreateIndexes $lda $greenplum $gpcompress
+        CreateIndexes $lda $greenplum $gpcompress $partition
         GatherStatistics $lda
         puts "[ string toupper $user ] SCHEMA COMPLETE"
         pg_disconnect $lda
@@ -716,7 +778,7 @@ proc do_tpch { host port sslmode scale_fact superuser superuser_password default
     }
 }
 }
-        .ed_mainFrame.mainwin.textFrame.left.text fastinsert end "do_tpch $pg_host $pg_port $pg_sslmode $pg_scale_fact $pg_tpch_superuser $pg_tpch_superuserpass $pg_tpch_defaultdbase $pg_tpch_dbase $pg_tpch_tspace $pg_tpch_user $pg_tpch_pass $pg_tpch_gpcompat $pg_tpch_gpcompress $pg_num_tpch_threads"
+        .ed_mainFrame.mainwin.textFrame.left.text fastinsert end "do_tpch $pg_host $pg_port $pg_sslmode $pg_scale_fact $pg_tpch_superuser $pg_tpch_superuserpass $pg_tpch_defaultdbase $pg_tpch_dbase $pg_tpch_tspace $pg_tpch_user $pg_tpch_pass $pg_tpch_gpcompat $pg_tpch_gpcompress $pg_num_tpch_threads $pg_tpch_partition"
     } else { return }
 }
 

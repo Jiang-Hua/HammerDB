@@ -647,7 +647,7 @@ proc configpgtpch {option} {
     setlocaltpchvars $configpostgresql
     #set matching fields in dialog to temporary dict
     variable pgfields
-    set pgfields [ dict create connection {pg_host {.pgtpch.f1.e1 get} pg_port {.pgtpch.f1.e2 get} pg_sslmode $pg_sslmode} tpch {pg_tpch_superuser {.pgtpch.f1.e3 get} pg_tpch_superuserpass {.pgtpch.f1.e4 get} pg_tpch_defaultdbase {.pgtpch.f1.e5 get} pg_tpch_user {.pgtpch.f1.e6 get} pg_tpch_pass {.pgtpch.f1.e7 get} pg_tpch_dbase {.pgtpch.f1.e8 get} pg_tpch_tspace {.pgtpch.f1.e8a get} pg_num_tpch_threads {.pgtpch.f1.e12 get} pg_total_querysets {.pgtpch.f1.e14 get} pg_degree_of_parallel {.pgtpch.f1.e16a get} pg_update_sets {.pgtpch.f1.e18 get} pg_trickle_refresh {.pgtpch.f1.e19 get} pg_scale_fact $pg_scale_fact pg_tpch_gpcompat $pg_tpch_gpcompat pg_tpch_gpcompress $pg_tpch_gpcompress pg_raise_query_error $pg_raise_query_error pg_verbose $pg_verbose pg_refresh_on $pg_refresh_on pg_refresh_verbose $pg_refresh_verbose pg_cloud_query $pg_cloud_query pg_rs_compat $pg_rs_compat}]
+    set pgfields [ dict create connection {pg_host {.pgtpch.f1.e1 get} pg_port {.pgtpch.f1.e2 get} pg_sslmode $pg_sslmode} tpch {pg_tpch_superuser {.pgtpch.f1.e3 get} pg_tpch_superuserpass {.pgtpch.f1.e4 get} pg_tpch_defaultdbase {.pgtpch.f1.e5 get} pg_tpch_user {.pgtpch.f1.e6 get} pg_tpch_pass {.pgtpch.f1.e7 get} pg_tpch_dbase {.pgtpch.f1.e8 get} pg_tpch_tspace {.pgtpch.f1.e8a get} pg_num_tpch_threads {.pgtpch.f1.e12 get} pg_total_querysets {.pgtpch.f1.e14 get} pg_degree_of_parallel {.pgtpch.f1.e16a get} pg_update_sets {.pgtpch.f1.e18 get} pg_trickle_refresh {.pgtpch.f1.e19 get} pg_scale_fact $pg_scale_fact pg_tpch_gpcompat $pg_tpch_gpcompat pg_tpch_gpcompress $pg_tpch_gpcompress pg_tpch_partition $pg_tpch_partition pg_raise_query_error $pg_raise_query_error pg_verbose $pg_verbose pg_refresh_on $pg_refresh_on pg_refresh_verbose $pg_refresh_verbose pg_cloud_query $pg_cloud_query pg_rs_compat $pg_rs_compat}]
     catch "destroy .pgtpch"
     ttk::toplevel .pgtpch
     wm transient .pgtpch .ed_mainFrame
@@ -803,6 +803,12 @@ proc configpgtpch {option} {
         ttk::spinbox $Name -from 1 -to 512 -textvariable pg_num_tpch_threads
         grid $Prompt -column 0 -row 14 -sticky e
         grid $Name -column 1 -row 14 -sticky ew
+        set Prompt $Parent.f1.p13
+        ttk::label $Prompt -text "Partition LINEITEM and ORDERS Tables :"
+        set Name $Parent.f1.e13
+        ttk::checkbutton $Name -text "" -variable pg_tpch_partition -onvalue "true" -offvalue "false"
+        grid $Prompt -column 0 -row 15 -sticky e
+        grid $Name -column 1 -row 15 -sticky w
     }
     if { $option eq "all" || $option eq "drive" } {
         if { $option eq "all" } {
